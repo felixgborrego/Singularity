@@ -76,7 +76,7 @@ import com.hubspot.singularity.data.SlaveManager;
 import com.hubspot.singularity.data.TaskManager;
 import com.hubspot.singularity.data.TaskRequestManager;
 import com.hubspot.singularity.helpers.RFC5545Schedule;
-import com.hubspot.singularity.smtp.SingularityMailer;
+import com.hubspot.singularity.notifications.SingularityIntercom;
 
 @Singleton
 public class SingularityScheduler {
@@ -94,13 +94,14 @@ public class SingularityScheduler {
   private final SlaveManager slaveManager;
   private final RackManager rackManager;
 
-  private final SingularityMailer mailer;
+  private final SingularityIntercom intercom;
 
+  private final SingularityNotificationScheduler notificationScheduler;
   private final SingularityLeaderCache leaderCache;
 
   @Inject
   public SingularityScheduler(TaskRequestManager taskRequestManager, SingularityConfiguration configuration, SingularityCooldown cooldown, DeployManager deployManager,
-    TaskManager taskManager, RequestManager requestManager, SlaveManager slaveManager, RackManager rackManager, SingularityMailer mailer, SingularityLeaderCache leaderCache) {
+                              TaskManager taskManager, RequestManager requestManager, SlaveManager slaveManager, RackManager rackManager, SingularityIntercom intercom, SingularityNotificationScheduler notificationScheduler, SingularityLeaderCache leaderCache) {
     this.taskRequestManager = taskRequestManager;
     this.configuration = configuration;
     this.deployManager = deployManager;
@@ -108,8 +109,9 @@ public class SingularityScheduler {
     this.requestManager = requestManager;
     this.slaveManager = slaveManager;
     this.rackManager = rackManager;
-    this.mailer = mailer;
     this.cooldown = cooldown;
+    this.intercom = intercom;
+    this.notificationScheduler = notificationScheduler;
     this.leaderCache = leaderCache;
   }
 
@@ -567,7 +569,7 @@ public class SingularityScheduler {
     }
 
     if (taskHistoryUpdateCreateResult == SingularityCreateResult.CREATED && requestState != RequestState.SYSTEM_COOLDOWN) {
-      mailer.queueTaskCompletedMail(task, taskId, request, state);
+      notificationScheduler.queueTaskCompletedNotification(taskId, request, state);
     } else if (requestState == RequestState.SYSTEM_COOLDOWN) {
       LOG.debug("Not sending a task completed email because task {} is in SYSTEM_COOLDOWN", taskId);
     } else {
@@ -579,7 +581,7 @@ public class SingularityScheduler {
         LOG.info("Request {} is entering cooldown due to task {}", request.getId(), taskId);
         requestState = RequestState.SYSTEM_COOLDOWN;
         requestManager.cooldown(request, System.currentTimeMillis());
-        mailer.sendRequestInCooldownMail(request);
+        intercom.sendRequestInCooldownNotification(request);
       }
     } else {
       LOG.debug("Not triggering cooldown due to TASK_LOST from invalid offers for request {}", request.getId());
